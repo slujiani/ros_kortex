@@ -17,8 +17,8 @@ import copy
 
 gripper_vertical_theta=[-180,0,90]
 gripper_horizontal_theta=[90,0,90]
-peg_foot_len=0.0481
-
+peg_foot_len=0.075 #可以更改插入深度
+screw_Quan=2  #拧螺母 转几个1/4圈
 # 判断坐标是否在运动范围内
 def pos_is_ok(pos=[0, 0, 0]):
     ret = True
@@ -45,7 +45,9 @@ def open_actions(robot:Robot):
     return success
 
 # 抓不锈钢杯子
-def pick_place(robot:Robot, pick_position=[0, 0, 0], pick_theta=gripper_horizontal_theta, place_position=[0, 0, 0],success=True):
+def pick_place(robot:Robot, pick_position=[0, 0, 0], place_position=[0, 0, 0],obj_vertical=True,obj_theta=0,success=True):
+    place_position=[0.27, 0.233, 0.1]
+    place_theta=[90,0,180]
     if pos_is_ok(pick_position) == False:
         rospy.loginfo('pick place is out of range.')
         return False
@@ -56,27 +58,57 @@ def pick_place(robot:Robot, pick_position=[0, 0, 0], pick_theta=gripper_horizont
     rospy.loginfo('Go back to initial pose')
     #复位
     success &= robot.example_send_gripper_command(0)
-    #夹爪状态横着的
-    success &= robot.example_home_the_robot()
+    
+    if obj_vertical==True:
+        #夹爪状态横着的 杯子是竖着放的
+        success &= robot.example_home_the_robot()
+        gripper_theta=gripper_horizontal_theta
+        pick_position[2]=0.1
+        
+    else:
+        #夹爪状态竖着的 
+        success &=robot.example_retract_the_robot()
+        gripper_theta=gripper_vertical_theta
+        gripper_theta[2]=obj_theta
+        pick_position[2]=0.019
+    
+        
     #到杯子位置
-    success &= robot.mov_rot_action(position=pick_position,theta=pick_theta)
+    if obj_vertical== True:
+        pick_position[0]-=0.05
+    
+    pick_position[2]+=0.1
+    success &= robot.mov_rot_action(position=pick_position,theta=gripper_theta)
+
+    if obj_vertical== True:
+        pick_position[0]+=0.05
+
+    pick_position[2]-=0.1
+    success &= robot.mov_rot_action(position=pick_position,theta=gripper_theta)
     rospy.loginfo('Arrived object pose, prepare for grabing...')
     #闭合夹爪
-    success &= robot.example_send_gripper_command(0.5)
+    success &= robot.example_send_gripper_command(0.465)
     #机械臂抬高0.1
     pick_position[2]+=0.1
-    success &= robot.mov_rot_action(position=pick_position,theta=pick_theta)
-    #到达放置点
-    success &= robot.mov_rot_action(position=place_position,theta=pick_theta)
+    success &= robot.mov_rot_action(position=pick_position,theta=gripper_theta)
+    success &= robot.example_home_the_robot()
+    #到达放置点  
+    place_position[2]+=0.1 
+    success &= robot.mov_rot_action(position=place_position,theta=place_theta)
+    place_position[2]-=0.1
+    success &= robot.mov_rot_action(position=place_position,theta=place_theta)
     #松开夹爪
     success &= robot.example_send_gripper_command(0)
+    place_position[2]=0.30
+    success &= robot.mov_rot_action(position=place_position,theta=place_theta)
     rospy.loginfo('Task finished, back to home')
     #复位
-    success &= robot.example_home_the_robot()
+    success &= robot.example_retract_the_robot()
     return success
 
 # 把螺母拧上
 def screw(robot:Robot, nut_position=[0, 0, 0], target_position=[0, 0, 0], success=True):
+    nut_position[2]=0.028
     if pos_is_ok(nut_position) == False:
             rospy.loginfo('nut position is out of range.')
             return False
@@ -90,34 +122,44 @@ def screw(robot:Robot, nut_position=[0, 0, 0], target_position=[0, 0, 0], succes
     success &= robot.example_send_gripper_command(0)
     success &= robot.example_retract_the_robot()
     #到达螺母位置
+    print('==================')
+    print(nut_position)
     success &= robot.mov_rot_action(position=nut_position,theta=gripper_vertical_theta)
     rospy.loginfo('Arrive object pose, prepare for grabing nut...')
     # 闭合夹爪
-    success &= robot.example_send_gripper_command(0.8)
+    success &= robot.example_send_gripper_command(0.9)
     rospy.loginfo('Go to target pose')
     # 抬高机械臂
     nut_position[2]+=0.1
     success &= robot.mov_rot_action(position=nut_position,theta=gripper_vertical_theta)
+    target_position[2]+=0.1
+    success &= robot.mov_rot_action(position=target_position,theta=gripper_vertical_theta)
+    target_position[2]-=0.1
     success &= robot.mov_rot_action(position=target_position,theta=gripper_vertical_theta)
     # 拧
     screw_theta=copy.deepcopy(gripper_vertical_theta)
     rospy.loginfo('Screwing')
-    for _ in range(8):
-        screw_theta[2]+=90
-        if screw_theta[2]==360:
+    for i in range(screw_Quan):
+        screw_theta[2]-=90
+        # if i ==4:
+        #     target_position[2]-=0.005
+        if screw_theta[2]==-360:
             screw_theta[2]==0
         success &= robot.mov_rot_action(position=target_position,theta=screw_theta)
-        #抬高机械臂
+        
+    success &= robot.example_send_gripper_command(0)
+    #抬高机械臂
     target_position[2]+=0.1
     success &= robot.mov_rot_action(position=target_position,theta=gripper_vertical_theta)
     rospy.loginfo('Task finished, back to home')
     # 复位
-    success &= robot.example_send_gripper_command(0)
+    
     success &= robot.example_retract_the_robot()
     return success
 
 # 把螺母拧出来
 def screw_out(robot:Robot, nut_position=[0, 0, 0], target_position=[0, 0, 0], success=True):
+    nut_position[2]=0.028
     if pos_is_ok(nut_position) == False:
         rospy.loginfo('nut position is out of range.')
         return False
@@ -130,11 +172,12 @@ def screw_out(robot:Robot, nut_position=[0, 0, 0], target_position=[0, 0, 0], su
     # 复位
     success &= robot.example_send_gripper_command(0)
     success &= robot.example_retract_the_robot()
+    success &= robot.mov_rot_action(position=[0.3,0.0,0.3],theta=gripper_vertical_theta)
     #到达螺杆上方
-    target_position[2]-=0.1
+    target_position[2]+=0.1
     success &= robot.mov_rot_action(position=target_position,theta=gripper_vertical_theta)
     #到达螺杆脑袋位置
-    target_position[2]+=0.1
+    target_position[2]-=0.1
     success &= robot.mov_rot_action(position=target_position,theta=gripper_vertical_theta)
 
     rospy.loginfo('Arrive object pose, prepare for grabing nut...')
@@ -142,12 +185,15 @@ def screw_out(robot:Robot, nut_position=[0, 0, 0], target_position=[0, 0, 0], su
     success &= robot.example_send_gripper_command(0.8)
     rospy.loginfo('Screwing out')
     screw_theta=gripper_vertical_theta
-    for _ in range(8):
-        screw_theta[2]-=90
+    for _ in range(screw_Quan):
+        screw_theta[2]+=90
+        if screw_theta[2]==360:
+            screw_theta[2]==0
         success &= robot.mov_rot_action(position=target_position,theta=screw_theta)
     #抬高机械臂
     target_position[2]+=0.1
     success &= robot.mov_rot_action(position=target_position,theta=screw_theta)
+    success &= robot.mov_rot_action(position=[0.3,0.0,0.3],theta=gripper_vertical_theta)
     #到达螺母指定地点
     success &= robot.mov_rot_action(position=nut_position,theta=screw_theta)
     #复位
@@ -157,6 +203,10 @@ def screw_out(robot:Robot, nut_position=[0, 0, 0], target_position=[0, 0, 0], su
 
   # 插头插进插板，停留，然后拔出复位
 def peg_in(robot:Robot, peg_position, hole_position, peg_theta=[-180,0,90],success=True):
+    #插头高度固定 
+    peg_position[2]=0.051
+    #插板高度固定 
+    hole_position[2]=0.159
     if pos_is_ok(peg_position) == False:
         rospy.loginfo('peg position is out of range.')
         return False
@@ -170,10 +220,10 @@ def peg_in(robot:Robot, peg_position, hole_position, peg_theta=[-180,0,90],succe
     success &= robot.example_retract_the_robot()
 
     # 移动到插头位置 带调整夹爪角度，默认是侧面垂直桌面（摄像头画面）
-    peg_pos_h=copy.deepcopy(peg_position)
-    peg_pos_h[2]=peg_pos_h[2]+0.1
-    success &= robot.mov_rot_action(position=peg_pos_h,theta=peg_theta)
+    peg_position[2]+=0.1
+    success &= robot.mov_rot_action(position=peg_position,theta=peg_theta)
     rospy.loginfo('Arriving at peg position, perparing for grabing peg...')
+    peg_position[2]-=0.1
     success &= robot.mov_rot_action(position=peg_position,theta=peg_theta)
     #抓
     success &= robot.example_send_gripper_command(0.465)  # 465
@@ -191,6 +241,7 @@ def peg_in(robot:Robot, peg_position, hole_position, peg_theta=[-180,0,90],succe
     return success
 
 def peg_out(robot:Robot, peg_position, hole_position, success=True):
+    peg_position=[0.187,-0.197,0.051]
     if pos_is_ok(peg_position) == False:
         rospy.loginfo('peg position is out of range.')
         return False
