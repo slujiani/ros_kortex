@@ -27,6 +27,8 @@ class Robot(object):
             self.input_pos_z=rospy.get_param("/position_z")
             self.turn_angle=0
             self.turn_angle=rospy.get_param("/turn_angle")
+            self.glass_vertical=True
+            self.glass_vertical=rospy.get_param("/glass_vertical")
     
             rospy.loginfo("Using robot_name " + self.robot_name + " , robot has " + str(self.degrees_of_freedom) + " degrees of freedom and is_gripper_present is " + str(self.is_gripper_present))
 
@@ -78,6 +80,8 @@ class Robot(object):
         return input_pos
     def get_turn_angle(self):
         return self.turn_angle
+    def get_glass_vertical(self):
+        return self.glass_vertical
     
     def cb_action_topic(self, notif):
         self.last_action_notif_type = notif.action_event
@@ -107,6 +111,7 @@ class Robot(object):
                 rospy.loginfo("Received ACTION_ABORT notification")
                 return False
             else:
+                # print('还是那个'+str(self.last_action_notif_type))
                 time.sleep(0.01)
 
     def example_subscribe_to_a_robot_notification(self):
@@ -238,7 +243,7 @@ class Robot(object):
         else:
             return self.wait_for_action_end_or_abort()
 
-    def example_send_joint_angles(self):
+    def example_send_joint_angles(self,j0=0,j1=0,j2=0,j3=0,j4=0,j5=0,j6=0):
         self.last_action_notif_type = None
 
         req = ExecuteActionRequest()
@@ -357,7 +362,7 @@ class Robot(object):
         else:
             return self.wait_for_action_end_or_abort()
 
-    def mov_rot_action(self,tran_speed=0.1,ori_speed=15,position=[0,0,0],theta=[0,0,0]):
+    def mov_rot_action(self,tran_speed=0.4,ori_speed=40,position=[0,0,0],theta=[0,0,0]):
         my_cartesian_speed = CartesianSpeed()
         my_cartesian_speed.translation = tran_speed # m/s
         my_cartesian_speed.orientation = ori_speed  # deg/s
@@ -389,3 +394,22 @@ class Robot(object):
         else:
             rospy.loginfo("Waiting for pose 1 to finish...")
             return self.wait_for_action_end_or_abort()
+    def get_pose(self):
+        self.last_action_notif_type = None
+        
+        feedback = rospy.wait_for_message("/" + self.robot_name + "/base_feedback", BaseCyclic_Feedback)
+        pose_lst=[]
+        pose_lst.append(feedback.base.commanded_tool_pose_x)
+        pose_lst.append(feedback.base.commanded_tool_pose_y)
+        pose_lst.append(feedback.base.commanded_tool_pose_z)
+        pose_lst.append(feedback.base.commanded_tool_pose_theta_x)
+        pose_lst.append(feedback.base.commanded_tool_pose_theta_y)
+        pose_lst.append(feedback.base.commanded_tool_pose_theta_z)
+        # pose_lst.append(0)
+        # gripper_pos=self.get_gripper_res()
+        
+        
+        # pose_lst.append(gripper_pos)
+
+        
+        return pose_lst
